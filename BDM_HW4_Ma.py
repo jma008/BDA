@@ -1,7 +1,7 @@
 import csv
 import datetime
 import json
-import statistics
+import numpy as np
 import pyspark
 import os
 import sys
@@ -56,7 +56,7 @@ def main(file):
         sorted_values = sorted(list(values))
         middle = len(sorted_values) // 2
         median = (sorted_values[middle] + sorted_values[~middle]) / 2
-        stdev = statistics.stdev(sorted_values)
+        stdev = np.std(sorted_values)
         low = max(0, median - stdev)
         high = median + stdev
         return (year, x[0], low, median, high)
