@@ -1,0 +1,98 @@
+import csv
+import datetime
+import numpy as np
+from pyspark import SparkContext
+import sys
+
+sc = SparkContext()
+core_places = 'hdfs:///data/share/bdm/core-places-nyc.csv'
+weekly_pattern = 'hdfs:///data/share/bdm/weekly-patterns-nyc-2019-2020/*'
+
+categories = ['big_box_grocers', 'convenience_stores', 'drinking_places', 'full_service_restaurants',
+              'limited_service_restaurants', 'pharmacies_and_drug_stores',
+              'snack_and_bakeries', 'specialty_food_stores', 'supermarkets_except_convenience_stores']
+
+# get the data for each category
+big_box_grocers = set(sc.textFile(core_places) \
+                      .map(lambda x: x.split(',')) \
+                      .map(lambda x: (x[1], x[9])) \
+                      .filter(lambda x: x[1] in ['452210', '452311']) \
+                      .map(lambda x: x[0]) \
+                      .collect())
+
+convenience_stores = set(sc.textFile(core_places) \
+                         .map(lambda x: x.split(',')) \
+                         .map(lambda x: (x[1], x[9])) \
+                         .filter(lambda x: x[1] == '445120') \
+                         .map(lambda x: x[0]) \
+                         .collect())
+
+drinking_places = set(sc.textFile(core_places) \
+                      .map(lambda x: x.split(',')) \
+                      .map(lambda x: (x[1], x[9])) \
+                      .filter(lambda x: x[1] == '722410') \
+                      .map(lambda x: x[0]) \
+                      .collect())
+
+full_service_restaurants = set(sc.textFile(core_places) \
+                               .map(lambda x: x.split(',')) \
+                               .map(lambda x: (x[1], x[9])) \
+                               .filter(lambda x: x[1] == '722511') \
+                               .map(lambda x: x[0]) \
+                               .collect())
+
+limited_service_restaurants = set(sc.textFile(core_places) \
+                                  .map(lambda x: x.split(',')) \
+                                  .map(lambda x: (x[1], x[9])) \
+                                  .filter(lambda x: x[1] == '722513') \
+                                  .map(lambda x: x[0]) \
+                                  .collect())
+
+pharmacies_and_drug_stores = set(sc.textFile(core_places) \
+                                 .map(lambda x: x.split(',')) \
+                                 .map(lambda x: (x[1], x[9])) \
+                                 .filter(lambda x: x[1] in ['446110', '446191']) \
+                                 .map(lambda x: x[0]) \
+                                 .collect())
+
+snack_and_bakeries = set(sc.textFile(core_places) \
+                         .map(lambda x: x.split(',')) \
+                         .map(lambda x: (x[1], x[9])) \
+                         .filter(lambda x: x[1] in ['311811', '722515']) \
+                         .map(lambda x: x[0]) \
+                         .collect())
+
+specialty_food_stores = set(sc.textFile(core_places) \
+                            .map(lambda x: x.split(',')) \
+                            .map(lambda x: (x[1], x[9])) \
+                            .filter(lambda x: x[1] in ['445210', '445220', '445230', '445291', '445292', '445299']) \
+                            .map(lambda x: x[0]) \
+                            .collect())
+
+supermarkets_except_convenience_stores = set(sc.textFile(core_places) \
+                                             .map(lambda x: x.split(',')) \
+                                             .map(lambda x: (x[1], x[9])) \
+                                             .filter(lambda x: x[1] == '445110') \
+                                             .map(lambda x: x[0]) \
+                                             .collect())
+
+stores = [big_box_grocers, convenience_stores, drinking_places, full_service_restaurants, limited_service_restaurants,
+          pharmacies_and_drug_stores, snack_and_bakeries, specialty_food_stores, supermarkets_except_convenience_stores]
+
+for index, store in enumerate(stores):
+    file_name = categories[index]
+    sc.textFile(weekly_pattern) \
+        .map(lambda x: next(csv.reader([x]))) \
+        .map(lambda x: (x[1], x[12], x[16])) \
+        .filter(lambda x: x[0] in store) \
+        .map(lambda x: (x[1][:10], x[2])) \
+        .flatMap(lambda x: [((datetime.datetime.strptime(x[0], '%Y-%m-%d') + datetime.timedelta(days=day)).date(),
+                             [int(w)]) for day, w in enumerate(x[1][1:-1].split(','))]) \
+        .reduceByKey(lambda x, y: x + y) \
+        .map(lambda x: (x[0], np.median(x[1]), np.std(x[1]))) \
+        .map(lambda x: (x[0], int(x[1]), int(x[1] - x[2]), int(x[1] + x[2]))) \
+        .map(lambda x: (x[0], x[1], x[2] if x[2] > 0 else 0, x[3] if x[3] > 0 else 0)) \
+        .sortBy(lambda x: x[0]) \
+        .map(lambda x: (str(x[0])[:4], str(x[0]), str(x[1]), str(x[2]), str(x[3]))) \
+        .option('header', 'true') \
+        .saveAsTextFile(sys.argv[-1] + '/' + file_name)
