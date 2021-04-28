@@ -35,7 +35,7 @@ def main(file):
                 # get place key and naics code
                 yield (row[1], row[9])
 
-    places = sc.textFile(core_places, use_unicode=True).cache()
+    places = sc.textFile(core_places, use_unicode= False).cache()
     valid_places = places.mapPartitionsWithIndex(naics_code)
 
     def extract_visits(partId, records):
@@ -46,7 +46,7 @@ def main(file):
         for row in reader:
             yield (row[1], (row[12], row[13], row[16]))
 
-    restaurants = sc.textFile(weekly_pattern,use_unicode=True).cache()
+    restaurants = sc.textFile(weekly_pattern,use_unicode=False).cache()
     mapped_restaurant_records = restaurants.mapPartitionsWithIndex(extract_visits)
 
 
